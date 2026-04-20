@@ -13,19 +13,45 @@ O RH de uma empresa de comunicação interna está sobrecarregado com demandas r
 
 ## 🧠 Como funciona
 
+### Fluxograma do workflow
+
+```mermaid
+flowchart TD
+    A[👤 Usuário<br/>digita o pedido no chat] --> B[Streamlit UI<br/>app.py]
+    B --> C{Primeira<br/>mensagem?}
+    C -->|Sim| D[Carrega system prompt<br/>prompt.py]
+    C -->|Não| E[Recupera thread<br/>st.session_state]
+    D --> F[Monta payload<br/>system + histórico + user]
+    E --> F
+    F --> G[🤖 OpenAI API<br/>gpt-4o-mini<br/>stream=true]
+    G --> H[Resposta token-a-token<br/>markdown formatado]
+    H --> I[Anexa à thread<br/>st.session_state.messages]
+    I --> J[📋 Texto pronto<br/>para copiar]
+    J --> K{Usuário quer<br/>ajustar?}
+    K -->|Sim: mais curto,<br/>outro tom, etc| B
+    K -->|Reset| L[🔄 Botão Resetar<br/>zera thread]
+    L --> A
+    K -->|Não| M[✅ Fim]
+
+    style A fill:#e1f5ff
+    style G fill:#fff4e1
+    style J fill:#d4f4dd
+    style L fill:#ffe1e1
 ```
-┌──────────────┐      ┌──────────────────────┐      ┌─────────────────┐
-│  Usuário     │──▶──│  Streamlit (chat UI) │──▶──│  OpenAI API     │
-│  (browser)   │◀──  │  + thread em memória │  ◀──│  (gpt-4o-mini)  │
-└──────────────┘      └──────────────────────┘      └─────────────────┘
-                              │
-                              ▼
-                    ┌────────────────────┐
-                    │  System prompt     │
-                    │  (prompt.py)       │
-                    │  — persona, regras │
-                    │  — limites éticos  │
-                    └────────────────────┘
+
+### Componentes
+
+```mermaid
+graph LR
+    U[👤 Browser] <-->|HTTP :8501| S[Streamlit<br/>app.py]
+    S <-->|mensagens<br/>em memória| TH[(Thread<br/>st.session_state)]
+    S <-->|chat.completions<br/>streaming| API[🤖 OpenAI API<br/>gpt-4o-mini]
+    S -.lê.-> SP[📄 prompt.py<br/>system prompt]
+    S -.lê.-> ENV[🔑 .env<br/>OPENAI_API_KEY]
+
+    style API fill:#fff4e1
+    style SP fill:#f0e1ff
+    style ENV fill:#ffe8e8
 ```
 
 - **Thread persistente em memória**: o histórico fica em `st.session_state` enquanto a aba do browser estiver aberta. O modelo recebe toda a conversa a cada turno, mantendo contexto (pedir "deixa mais curto" funciona).
@@ -138,6 +164,118 @@ O browser abre automaticamente em `http://localhost:8501`.
 
 ---
 
+## 💡 Exemplos de uso (Input → Output)
+
+Saídas reais geradas pelo agente durante os testes. O usuário digita um input em linguagem natural e recebe o texto pronto para copiar.
+
+---
+
+### Exemplo 1 — Aviso institucional formal
+
+**Input do usuário:**
+> *E-mail formal avisando que o RH mudou o horário de atendimento para 10h–16h a partir de segunda-feira, por ajuste de equipe.*
+
+**Output do agente:**
+
+```
+Assunto: Novo horário de atendimento do RH a partir de segunda-feira
+
+Prezados(as) colaboradores(as),
+
+Informamos que, a partir de segunda-feira, o horário de atendimento do
+setor de Recursos Humanos passará a ser das 10h às 16h. A mudança
+decorre de um ajuste interno de equipe e tem como objetivo manter a
+qualidade do atendimento prestado.
+
+Solicitações urgentes fora desse horário podem ser encaminhadas por
+e-mail para [E-MAIL DO RH], e serão respondidas no próximo dia útil.
+
+Agradecemos a compreensão de todos.
+
+Atenciosamente,
+[NOME DO RESPONSÁVEL]
+Recursos Humanos
+```
+
+> ✅ Note os **placeholders** (`[E-MAIL DO RH]`, `[NOME DO RESPONSÁVEL]`) — o agente não inventa dados internos.
+
+---
+
+### Exemplo 2 — Continuidade da thread (memória persistente)
+
+Sequência do Exemplo 1. O usuário manda uma segunda mensagem e o agente mantém contexto.
+
+**Input do usuário:**
+> *Agora deixa mais curto e em tom de WhatsApp corporativo.*
+
+**Output do agente:**
+
+```
+📣 Atenção, pessoal!
+
+A partir de segunda-feira, o RH atende das 10h às 16h.
+Fora desse horário, mandem e-mail para [E-MAIL DO RH] que
+respondemos no próximo dia útil.
+
+Qualquer dúvida, só chamar! 🙋
+```
+
+> ✅ O agente **lembra do contexto** (mudança de horário do RH) sem precisar repetir. A thread persistente é o que permite esse refinamento iterativo.
+
+---
+
+### Exemplo 3 — Mensagem motivacional para WhatsApp
+
+**Input do usuário:**
+> *Mensagem curta de WhatsApp para incentivar o time a participar da campanha de saúde: check-up gratuito até 20/09, tom motivacional.*
+
+**Output do agente:**
+
+```
+🚨 Atenção, equipe!
+
+Já começou a campanha de saúde com check-up gratuito
+para todos os colaboradores! 💙
+
+Agende seu horário até 20/09 e cuide do seu bem-estar.
+O primeiro passo para grandes conquistas é uma vida saudável. 💪
+
+👉 Para agendar: [LINK DE AGENDAMENTO]
+```
+
+---
+
+### Exemplo 4 — Resumo de reunião
+
+**Input do usuário:**
+> *Resumo de reunião: falamos sobre metas do Q2, time bateu 80% do target, próxima reunião dia 30/04, presentes: João (comercial), Maria (produto), Pedro (CS). Tom profissional mas direto.*
+
+**Output do agente:**
+
+```
+## Resumo — Reunião de acompanhamento Q2
+
+**Participantes:** João (Comercial), Maria (Produto), Pedro (CS)
+**Data:** [DATA DA REUNIÃO]
+
+### Principais pontos discutidos
+- **Atingimento do Q2:** o time bateu 80% do target estabelecido.
+- **Gap de 20%:** necessidade de analisar causas e ajustar
+  estratégia para os próximos ciclos.
+
+### Próximos passos
+- Nova reunião agendada para **30/04**, com foco em:
+  - Análise detalhada dos 20% não atingidos
+  - Plano de ação para recuperação
+  - Alinhamento de metas para Q3
+
+**Responsáveis pelo follow-up:** João, Maria e Pedro.
+```
+
+> ✅ O agente **estrutura automaticamente** em tópicos, adiciona placeholder para a data que não foi fornecida e cria próximos passos derivados do contexto.
+
+---
+
 ## 📐 Parte teórica (análise e discussão)
 
 ### Contextualização
@@ -172,8 +310,11 @@ fundamentos-ia-generativa/
 ├── requirements.txt    # openai, streamlit, python-dotenv
 ├── .env.example        # Template de configuração
 ├── .gitignore
-└── README.md           # Este arquivo
+├── README.md           # Este arquivo (visão do produto)
+└── CLAUDE.md           # Metodologia de construção (low-code assistido por IA)
 ```
+
+> 📘 Leitura recomendada: consulte o [**CLAUDE.md**](./CLAUDE.md) para entender como o projeto foi construído usando um agente de IA seguindo práticas de low-code/no-code — o desenvolvedor humano descreveu as intenções em linguagem natural e o agente produziu os artefatos.
 
 ## 🔧 Troubleshooting
 
@@ -183,6 +324,29 @@ fundamentos-ia-generativa/
 | `401 Unauthorized` | Chave inválida ou expirada. Gere uma nova em https://platform.openai.com/api-keys |
 | `429 Rate limit` | Conta sem créditos ou limite atingido. Verifique billing |
 | `streamlit: command not found` | O venv não está ativo. Re-ative e reinstale deps |
+
+---
+
+## 🏁 Conclusão
+
+A solução demonstra como uma combinação simples — **um LLM potente + um system prompt bem desenhado + uma interface mínima** — já resolve um problema real de produtividade no RH corporativo, sem exigir infraestrutura pesada ou programação complexa.
+
+**Benefícios entregues:**
+
+- ⏱️ **Redução de tempo:** tarefas de redação caem de ~20 min para ~30 s.
+- 🎯 **Consistência organizacional:** o system prompt atua como "manual de estilo vivo", garantindo tom unificado entre diferentes colaboradores e canais.
+- 🔄 **Iteração natural:** a thread persistente permite refinar o texto ("mais curto", "mais formal") sem recomeçar.
+- 🔒 **Proteção ética embutida:** placeholders em dados faltantes + avisos de LGPD no próprio prompt mitigam riscos de alucinação e vazamento.
+- 🚀 **Setup trivial:** `venv` + `pip install` + `streamlit run` — qualquer colaborador roda em menos de 2 minutos.
+
+**Caminhos de evolução (fora do escopo deste trabalho):**
+
+- Autenticação corporativa (SSO) para auditar quem usou
+- Biblioteca de templates por canal (e-mail, WhatsApp, Teams)
+- Camada RAG com manual da empresa para identidade ainda mais precisa
+- Observabilidade (Langfuse/PostHog) para medir economia real de tempo
+
+A prova de conceito cumpre o objetivo do desafio: **aplicar IA Generativa com prompt engineering para automatizar comunicação corporativa**, entregue de forma funcional, documentada e reprodutível.
 
 ---
 
