@@ -31,7 +31,7 @@ with st.sidebar:
     st.caption("Assistente para e-mails, avisos, resumos e mensagens corporativas.")
     st.divider()
     st.markdown(f"**Modelo:** `{MODEL}`")
-    st.markdown(f"**Mensagens na thread:** {len(st.session_state.messages) - 1}")
+    msg_counter = st.empty()
     if st.button("🔄 Resetar thread", use_container_width=True, type="primary"):
         init_thread()
         st.rerun()
@@ -78,3 +78,5 @@ if user_input := st.chat_input("Ex: e-mail formal avisando sobre mudança de hor
             placeholder.error(full_response)
 
     st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+msg_counter.markdown(f"**Mensagens na thread:** {len(st.session_state.messages) - 1}")
