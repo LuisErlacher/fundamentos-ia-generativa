@@ -21,35 +21,23 @@ O copiloto resolve isso entregando:
 
 ## 🧠 Arquitetura
 
-### Fluxo conversacional (tool calling sob demanda)
+### Jornada do usuário
 
 ```mermaid
 flowchart TD
-    A[👤 Colaborador<br/>informa nome + cargo] --> B[Streamlit UI<br/>app.py]
-    B --> C[Monta system prompt<br/>com identidade Solaris + guardrails]
-    C --> D[Saudação hardcoded<br/>com menu de 7 opções]
-    D --> E{Usuário escolhe:<br/>número, nome<br/>ou descrição livre}
-    E --> F[agent.py<br/>run_agent_turn]
-    F -->|tool_choice: load_template<br/>parallel_tool_calls: false| G[🤖 OpenAI<br/>gpt-4o-mini]
-    G --> H[🔧 tool call<br/>load_template option=N]
-    H --> I[tools.py<br/>dispatch_tool]
-    I --> J[templates.py<br/>retorna skeleton<br/>+ campos requeridos]
-    J --> F
-    F -->|2ª chamada<br/>tool_choice: auto| G
-    G --> K[💬 LLM pergunta<br/>campos que faltam]
-    K --> L[Usuário responde]
-    L --> F
-    F --> M[📋 LLM preenche<br/>skeleton literal]
-    M --> N{Ajustar?}
-    N -->|Sim| L
-    N -->|🔄 Nova sessão| A
-    N -->|Não| O[✅ Pronto pra copiar]
-
-    style A fill:#e1f5ff
-    style G fill:#fff4e1
-    style H fill:#ffe4b5
-    style M fill:#d4f4dd
+    A([👤 Colaborador abre o copiloto]) --> B[📝 Informa nome e cargo]
+    B --> C[👋 Recebe saudação + menu de 7 opções]
+    C --> D[🎯 Escolhe o tipo de texto<br/>número, nome ou descrição livre]
+    D --> E[❓ Copiloto pergunta apenas<br/>o que falta pra preencher o template]
+    E --> F[✍️ Colaborador responde os detalhes]
+    F --> G[📄 Recebe o texto pronto pra copiar<br/>no formato padrão da empresa]
+    G --> H{Precisa ajustar?}
+    H -->|Pedir refino<br/>mais curto, mais formal...| G
+    H -->|Quer outro texto| C
+    H -->|Terminou| I([✅ Fim])
 ```
+
+Na prática: **2 telas de entrada** (identificação → chat), **1 escolha** (menu), **1 ou 2 rodadas de perguntas** direcionadas, e **entrega**. Refino iterativo sem sair do chat.
 
 ### Componentes (5 módulos)
 
@@ -78,10 +66,6 @@ graph LR
     AGENT <--> API
     TOOLS --> TPL
     PRM --> TPL
-
-    style API fill:#fff4e1
-    style TPL fill:#f0e1ff
-    style PRM fill:#e8f5ff
 ```
 
 **Separação de responsabilidades:**
