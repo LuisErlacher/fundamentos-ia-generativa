@@ -1,82 +1,115 @@
 import os
+
 import streamlit as st
 from dotenv import load_dotenv
-from openai import OpenAI
 
-from prompt import SYSTEM_PROMPT
+from agent import MODEL, run_agent_turn
+from prompts import build_system_prompt, build_welcome_message
 
 load_dotenv()
 
-st.set_page_config(page_title="Copiloto de Comunicação Interna", page_icon="✉️", layout="centered")
+st.set_page_config(
+    page_title="Copiloto Solaris Brasil",
+    page_icon="☀️",
+    layout="centered",
+)
 
-API_KEY = os.getenv("OPENAI_API_KEY", "")
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-
-if not API_KEY:
+if not os.getenv("OPENAI_API_KEY"):
     st.error("⚠️ Configure a variável `OPENAI_API_KEY` no arquivo `.env` antes de rodar.")
     st.stop()
 
-client = OpenAI(api_key=API_KEY)
+
+def reset_session() -> None:
+    for key in ("nome", "cargo", "messages"):
+        st.session_state.pop(key, None)
 
 
-def init_thread():
-    st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+def identificado() -> bool:
+    return bool(st.session_state.get("nome")) and bool(st.session_state.get("cargo"))
 
 
-if "messages" not in st.session_state:
-    init_thread()
+def start_conversation(nome: str, cargo: str) -> None:
+    st.session_state.nome = nome
+    st.session_state.cargo = cargo
+    st.session_state.messages = [
+        {"role": "system", "content": build_system_prompt(nome, cargo)},
+        {"role": "assistant", "content": build_welcome_message(nome)},
+    ]
 
-with st.sidebar:
-    st.title("✉️ Copiloto de Comunicação")
-    st.caption("Assistente para e-mails, avisos, resumos e mensagens corporativas.")
-    st.divider()
-    st.markdown(f"**Modelo:** `{MODEL}`")
-    msg_counter = st.empty()
-    if st.button("🔄 Resetar thread", use_container_width=True, type="primary"):
-        init_thread()
-        st.rerun()
-    st.divider()
-    st.markdown(
-        "**Exemplos de prompt:**\n\n"
-        "- E-mail formal avisando feriado de 21/04\n"
-        "- Resumo de reunião: falamos sobre metas Q2\n"
-        "- Mensagem WhatsApp convidando para happy hour\n"
-        "- Comunicado sobre nova política de home office"
+
+def render_sidebar() -> None:
+    with st.sidebar:
+        st.title("☀️ Solaris Brasil")
+        st.caption("Copiloto de Comunicação Interna — RH & Comunicação")
+        st.divider()
+        st.markdown(f"**Modelo:** `{MODEL}`")
+        if identificado():
+            st.markdown(f"**Colaborador:** {st.session_state.nome}")
+            st.markdown(f"**Cargo:** {st.session_state.cargo}")
+            st.caption(f"Mensagens na thread: {len(st.session_state.messages) - 1}")
+            st.divider()
+            if st.button("🔄 Nova sessão", use_container_width=True, type="primary"):
+                reset_session()
+                st.rerun()
+        st.divider()
+        st.caption(
+            "Este assistente segue guardrails explícitos de LGPD, "
+            "confidencialidade e escopo corporativo. Templates carregados "
+            "sob demanda via tool calling — zero contaminação entre sessões."
+        )
+
+
+def render_identification_form() -> None:
+    st.subheader("👋 Antes de começar, se identifica")
+    st.caption(
+        "Seus dados ficam apenas nesta sessão do navegador. "
+        "Usados só pra personalizar saudações e assinaturas."
     )
+    with st.form("identificacao", clear_on_submit=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            nome_input = st.text_input("Seu nome completo *", placeholder="Ex: Ana Ribeiro")
+        with col2:
+            cargo_input = st.text_input(
+                "Seu cargo / departamento *",
+                placeholder="Ex: Analista de RH Sr.",
+            )
+        submitted = st.form_submit_button(
+            "Entrar no copiloto →", type="primary", use_container_width=True
+        )
+
+    if submitted:
+        if not nome_input.strip() or not cargo_input.strip():
+            st.error("Preenche nome e cargo pra continuar.")
+        else:
+            start_conversation(nome_input.strip(), cargo_input.strip())
+            st.rerun()
+
+
+def render_history() -> None:
+    for msg in st.session_state.messages:
+        role = msg["role"]
+        if role in ("system", "tool"):
+            continue
+        if role == "assistant" and not msg.get("content"):
+            continue
+        with st.chat_message(role):
+            st.markdown(msg["content"])
+
+
+render_sidebar()
 
 st.title("Copiloto de Comunicação Interna")
-st.caption("Descreva o que você precisa escrever. Eu entrego pronto pra copiar.")
+st.caption("Solaris Brasil — Energia Renovável • RH & Comunicação")
 
-for msg in st.session_state.messages:
-    if msg["role"] == "system":
-        continue
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+if not identificado():
+    render_identification_form()
+    st.stop()
 
-if user_input := st.chat_input("Ex: e-mail formal avisando sobre mudança de horário do RH..."):
+render_history()
+
+if user_input := st.chat_input("Responde com número, nome do template ou descreva livremente..."):
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
-
-    with st.chat_message("assistant"):
-        placeholder = st.empty()
-        full_response = ""
-        try:
-            stream = client.chat.completions.create(
-                model=MODEL,
-                messages=st.session_state.messages,
-                stream=True,
-                temperature=0.7,
-            )
-            for chunk in stream:
-                delta = chunk.choices[0].delta.content or ""
-                full_response += delta
-                placeholder.markdown(full_response + "▌")
-            placeholder.markdown(full_response)
-        except Exception as e:
-            full_response = f"❌ Erro na chamada à OpenAI: {e}"
-            placeholder.error(full_response)
-
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-
-msg_counter.markdown(f"**Mensagens na thread:** {len(st.session_state.messages) - 1}")
+    run_agent_turn(st.session_state.messages)
